@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using System.Runtime.InteropServices.ComTypes;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -9,6 +10,10 @@ namespace com_api.Services
     [System.Runtime.Versioning.SupportedOSPlatform("windows")]
     public class PowerPointService : IDisposable
     {
+        // COM context flags
+        private const int CLSCTX_INPROC_SERVER = 0x1;
+        private const int CLSCTX_REMOTE_SERVER = 0x10;
+
         private dynamic? _powerPointApp;
         private dynamic? _currentPresentation;
         private bool _disposed = false;
@@ -171,7 +176,7 @@ namespace com_api.Services
             {
                 if (_powerPointApp == null && !_isInitialized)
                 {
-                    // Create PowerPoint application dynamically
+                    // Create PowerPoint application dynamically using the host's PowerPoint
                     Type? ppType = Type.GetTypeFromProgID("PowerPoint.Application");
                     if (ppType == null)
                     {
@@ -179,16 +184,53 @@ namespace com_api.Services
                         return false;
                     }
 
-                    _powerPointApp = Activator.CreateInstance(ppType);
+                    // Create the PowerPoint instance with specific CLSCTX flags to use the host's PowerPoint
+                    try
+                    {
+                        // First try with default COM context
+                        _powerPointApp = Activator.CreateInstance(ppType);
+                    }
+                    catch (Exception ex1)
+                    {
+                        Console.WriteLine($"Default COM creation failed: {ex1.Message}");
+                        try
+                        {
+                            // Try with specific COM context flags
+                            _powerPointApp = Activator.CreateInstance(
+                                ppType,
+                                null,
+                                CLSCTX_INPROC_SERVER | CLSCTX_REMOTE_SERVER
+                            );
+                        }
+                        catch (Exception ex2)
+                        {
+                            Console.WriteLine(
+                                $"Specific COM context creation failed: {ex2.Message}"
+                            );
+                            try
+                            {
+                                // Last resort: Try alternative approach using COM interop
+                                Type comType = Type.GetTypeFromProgID(
+                                    "PowerPoint.Application",
+                                    true
+                                );
+                                _powerPointApp = Activator.CreateInstance(comType);
+                            }
+                            catch (Exception ex3)
+                            {
+                                Console.WriteLine(
+                                    $"All PowerPoint instantiation methods failed: {ex3.Message}"
+                                );
+                                return false;
+                            }
+                        }
+                    }
+
                     if (_powerPointApp == null)
                     {
                         Console.WriteLine("Failed to create PowerPoint application instance.");
                         return false;
                     }
-
-                    // NOTE: We keep PowerPoint visible from the start to avoid the error
-                    // "Hiding the application window is not allowed"
-                    // _powerPointApp.Visible = false; - This line caused the error
 
                     // Set performance optimizations for fast loading
                     try

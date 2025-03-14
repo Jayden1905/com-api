@@ -15,8 +15,36 @@ services:
     environment:
       - ASPNETCORE_ENVIRONMENT=Production
       - DOTNET_EnableDiagnostics=0
+      # Add DCOM environment variables
+      - DCOM_USE_APPID=1
+      - DCOM_USE_RUNAS=1
     # Set memory limits only (no reservations on Windows)
     deploy:
       resources:
         limits:
           memory: 4G
+    # Add DCOM settings to use host's PowerPoint
+    volumes:
+      - type: bind
+        source: C:/Windows/Registration
+        target: C:/Windows/Registration
+        read_only: true
+      - type: bind
+        source: C:/Windows/SysWOW64
+        target: C:/Windows/SysWOW64
+        read_only: true
+      - type: bind
+        source: C:/Windows/System32
+        target: C:/Windows/System32
+        read_only: true
+      - type: bind
+        source: C:/Windows/System32/config
+        target: C:/Windows/System32/config
+        read_only: true
+    # Add necessary capabilities for DCOM
+    cap_add:
+      - SYS_ADMIN
+    # Add security options for DCOM
+    security_opt:
+      - seccomp:unconfined
+      - apparmor:unconfined

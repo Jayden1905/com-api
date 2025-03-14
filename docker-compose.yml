@@ -9,16 +9,6 @@ services:
     container_name: powerpoint-api
     ports:
       - '8080:80'
-    volumes:
-      # Mount presentations folder into container using Windows path format
-      - type: bind
-        source: ${PWD}/presentations
-        target: /app/presentations
-      # Important: Mount DCOM settings for PowerPoint COM operations
-      - type: bind
-        source: C:/Windows/Registration
-        target: C:/Windows/Registration
-        read_only: true
     # Isolate process with process isolation (required for Windows containers)
     isolation: process
     restart: unless-stopped

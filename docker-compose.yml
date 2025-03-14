@@ -41,6 +41,3 @@ services:
         source: C:/Windows/System32/config
         target: C:/Windows/System32/config
         read_only: true
-    # Security options for DCOM
-    security_opt:
-      - seccomp:unconfined

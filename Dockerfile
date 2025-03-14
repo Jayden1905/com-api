@@ -5,11 +5,11 @@ WORKDIR /source
 # Copy csproj and restore dependencies
 # Note: Make sure your project targets .NET 8.0 to match this container's SDK version
 COPY *.csproj .
-RUN dotnet restore
+RUN dotnet restore "..csproj"
 
 # Copy everything else and build the application
 COPY . .
-RUN dotnet publish -c Release -o /app
+RUN dotnet publish "..csproj" -c Release -o /app
 
 # Build the runtime image
 FROM mcr.microsoft.com/dotnet/aspnet:8.0-windowsservercore-ltsc2019

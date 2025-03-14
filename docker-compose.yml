@@ -12,6 +12,11 @@ services:
     volumes:
       # Mount presentations folder into container
       - ./presentations:/app/presentations
+      # Important: Mount DCOM settings for PowerPoint COM operations
+      - type: bind
+        source: C:\Windows\Registration
+        target: C:\Windows\Registration
+        read_only: true
     # Isolate process with process isolation (required for Windows containers)
     isolation: process
     restart: unless-stopped

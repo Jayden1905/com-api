@@ -28,6 +28,7 @@ This guide explains how to deploy the PowerPoint API service on Windows Server 2
 ```powershell
 # Open PowerShell as Administrator
 Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process
+# Then run the setup script
 .\setup-server.ps1
 ```
 

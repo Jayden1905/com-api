@@ -3,6 +3,7 @@ FROM mcr.microsoft.com/dotnet/sdk:8.0-windowsservercore-ltsc2019 AS build
 WORKDIR /source
 
 # Copy csproj and restore dependencies
+# Note: Make sure your project targets .NET 8.0 to match this container's SDK version
 COPY *.csproj .
 RUN dotnet restore
 
@@ -27,5 +28,5 @@ ENV ASPNETCORE_ENVIRONMENT=Production
 # Expose port 80
 EXPOSE 80
 
-# Start the app
-ENTRYPOINT ["dotnet", "com-api.dll"]
+# Start the app with the correct filename
+ENTRYPOINT ["dotnet", "..dll"]

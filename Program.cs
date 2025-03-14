@@ -309,6 +309,132 @@ app.MapGet(
     )
     .WithName("ResetPowerPoint");
 
+// Add an endpoint to list available macros in the current presentation
+app.MapGet(
+        "/powerpoint/macros",
+        [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+        (com_api.Services.PowerPointService pptService) =>
+        {
+            var macros = pptService.GetAvailableMacros();
+            if (macros.Count > 0)
+            {
+                return Results.Ok(new { Macros = macros });
+            }
+            return Results.NotFound("No macros found in the current presentation");
+        }
+    )
+    .WithName("GetPowerPointMacros");
+
+// Add an endpoint to run a specific macro by name
+app.MapGet(
+        "/powerpoint/macro/run",
+        [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+        (com_api.Services.PowerPointService pptService, string macroName) =>
+        {
+            if (string.IsNullOrEmpty(macroName))
+            {
+                return Results.BadRequest("Macro name is required");
+            }
+
+            bool success = pptService.RunMacro(macroName);
+            if (success)
+            {
+                return Results.Ok(new { Message = $"Macro '{macroName}' executed successfully" });
+            }
+            return Results.BadRequest($"Failed to run macro '{macroName}'");
+        }
+    )
+    .WithName("RunPowerPointMacro");
+
+// Add an endpoint to run macros on the current slide
+app.MapGet(
+        "/powerpoint/slide/runmacro",
+        [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+        (com_api.Services.PowerPointService pptService) =>
+        {
+            bool success = pptService.RunMacroOnCurrentSlide();
+            if (success)
+            {
+                return Results.Ok(
+                    new
+                    {
+                        Message = "Successfully ran macro for the current slide",
+                        CurrentSlide = pptService.GetCurrentSlideNumber(),
+                        TotalSlides = pptService.GetTotalSlides(),
+                    }
+                );
+            }
+            return Results.BadRequest(
+                $"No applicable macros found for the current slide or execution failed"
+            );
+        }
+    )
+    .WithName("RunCurrentSlideMacro");
+
+// Add an endpoint to list potential macro names for the current slide
+app.MapGet(
+        "/powerpoint/macro/suggestions",
+        [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+        (com_api.Services.PowerPointService pptService) =>
+        {
+            var potentialMacros = pptService.GetPotentialMacroNames();
+            bool hasMacros = pptService.HasMacros();
+
+            return Results.Ok(
+                new
+                {
+                    CurrentSlide = pptService.GetCurrentSlideNumber(),
+                    PresentationContainsMacros = hasMacros,
+                    PotentialMacroNames = potentialMacros,
+                    Note = "These are potential macro names based on common naming patterns. Try them with /powerpoint/macro/run?macroName=[name]",
+                }
+            );
+        }
+    )
+    .WithName("GetMacroSuggestions");
+
+// Add an endpoint to check if the presentation has macros
+app.MapGet(
+        "/powerpoint/hasmacros",
+        [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+        (com_api.Services.PowerPointService pptService) =>
+        {
+            bool hasMacros = pptService.HasMacros();
+            return Results.Ok(
+                new
+                {
+                    HasMacros = hasMacros,
+                    CurrentSlide = pptService.GetCurrentSlideNumber(),
+                    TotalSlides = pptService.GetTotalSlides(),
+                }
+            );
+        }
+    )
+    .WithName("CheckForMacros");
+
+// Add an endpoint to start slideshow mode if not already in it
+app.MapGet(
+        "/powerpoint/startshow",
+        [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+        (com_api.Services.PowerPointService pptService) =>
+        {
+            bool success = pptService.StartSlideShow();
+            if (success)
+            {
+                return Results.Ok(
+                    new
+                    {
+                        Message = "Slideshow started successfully",
+                        CurrentSlide = pptService.GetCurrentSlideNumber(),
+                        TotalSlides = pptService.GetTotalSlides(),
+                    }
+                );
+            }
+            return Results.BadRequest("Failed to start slideshow mode");
+        }
+    )
+    .WithName("StartSlideshow");
+
 app.Run();
 
 record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)

@@ -908,5 +908,687 @@ namespace com_api.Services
                 return null;
             }
         }
+
+        // Get available macros in the current presentation
+        public List<string> GetAvailableMacros()
+        {
+            List<string> macroNames = new List<string>();
+
+            try
+            {
+                if (_currentPresentation == null)
+                {
+                    Console.WriteLine("No presentation is open");
+                    return macroNames;
+                }
+
+                // First, check if the presentation has VBA project
+                try
+                {
+                    dynamic vbProject = _currentPresentation.VBProject;
+                    if (vbProject == null)
+                    {
+                        Console.WriteLine("Presentation does not have a VBA project");
+                        return macroNames;
+                    }
+
+                    // Get VBA components (modules)
+                    dynamic vbComponents = vbProject.VBComponents;
+                    if (vbComponents == null)
+                    {
+                        return macroNames;
+                    }
+
+                    // Loop through all components
+                    int count = vbComponents.Count;
+                    for (int i = 1; i <= count; i++)
+                    {
+                        try
+                        {
+                            dynamic component = vbComponents.Item(i);
+                            if (component != null)
+                            {
+                                string componentName = component.Name;
+                                dynamic codeModule = component.CodeModule;
+
+                                if (codeModule != null && codeModule.CountOfLines > 0)
+                                {
+                                    // Get the code to parse for Sub procedures
+                                    string code = codeModule.Lines(1, codeModule.CountOfLines);
+
+                                    // Very basic parsing for Sub procedures
+                                    // This is a simplified approach - real parsing would be more complex
+                                    string[] lines = code.Split(
+                                        new[] { '\r', '\n' },
+                                        StringSplitOptions.RemoveEmptyEntries
+                                    );
+                                    foreach (string line in lines)
+                                    {
+                                        string trimmedLine = line.Trim();
+                                        if (
+                                            trimmedLine.StartsWith(
+                                                "Sub ",
+                                                StringComparison.OrdinalIgnoreCase
+                                            )
+                                            && !trimmedLine.Contains("(")
+                                            && !trimmedLine.Contains(")")
+                                        )
+                                        {
+                                            // Extract macro name - this is a very basic extraction
+                                            string macroName = trimmedLine.Substring(4).Trim();
+                                            macroNames.Add($"{componentName}.{macroName}");
+                                        }
+                                        else if (
+                                            trimmedLine.StartsWith(
+                                                "Sub ",
+                                                StringComparison.OrdinalIgnoreCase
+                                            )
+                                            && trimmedLine.Contains("(")
+                                            && trimmedLine.Contains(")")
+                                        )
+                                        {
+                                            // Extract macro name from a Sub with parameters
+                                            int parenIndex = trimmedLine.IndexOf('(');
+                                            if (parenIndex > 4)
+                                            {
+                                                string macroName = trimmedLine
+                                                    .Substring(4, parenIndex - 4)
+                                                    .Trim();
+                                                macroNames.Add($"{componentName}.{macroName}");
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"Error examining VBA component {i}: {ex.Message}");
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error examining VBA project: {ex.Message}");
+
+                    // Fall back to simpler detection if VBProject access fails due to security settings
+                    try
+                    {
+                        bool hasMacros = _currentPresentation.HasVBProject;
+                        if (hasMacros)
+                        {
+                            macroNames.Add(
+                                "(Macros exist but details cannot be accessed due to security settings)"
+                            );
+                        }
+                    }
+                    catch
+                    {
+                        // Even the HasVBProject check failed, ignore
+                    }
+                }
+
+                return macroNames;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error getting available macros: {ex.Message}");
+                return macroNames;
+            }
+        }
+
+        // Run a specific macro by name - updated to work even with restricted VBA access
+        public bool RunMacro(string macroName)
+        {
+            try
+            {
+                if (_powerPointApp == null || _currentPresentation == null)
+                {
+                    Console.WriteLine("PowerPoint or presentation is not available");
+                    return false;
+                }
+
+                if (string.IsNullOrEmpty(macroName))
+                {
+                    Console.WriteLine("Macro name is required");
+                    return false;
+                }
+
+                // Try to run the macro directly without requiring VBA project access
+                return RetryOperation(
+                    () =>
+                    {
+                        try
+                        {
+                            // Method 1: Try direct execution through Run method
+                            try
+                            {
+                                Console.WriteLine($"Attempting to run macro: {macroName}");
+                                // This method may work even when VBA project access is restricted
+                                _powerPointApp.Run(macroName);
+                                Console.WriteLine(
+                                    $"Successfully ran macro via App.Run: {macroName}"
+                                );
+                                return true;
+                            }
+                            catch (Exception ex)
+                            {
+                                Console.WriteLine($"Failed to run using App.Run: {ex.Message}");
+                            }
+
+                            // Method 2: Try using SendKeys as a fallback (works in some cases)
+                            try
+                            {
+                                // Try to activate the VBA IDE and run the macro via ALT+F8 (macro dialog)
+                                _powerPointApp.CommandBars.ExecuteMso("ShowVisualBasicEditor");
+                                Console.WriteLine(
+                                    "Opened VBA editor. Attempting alternative execution..."
+                                );
+
+                                // Try executing directly from immediate window
+                                var vbe = _powerPointApp.VBE;
+                                if (vbe != null)
+                                {
+                                    try
+                                    {
+                                        // Try getting the active window's immediate pane
+                                        var activeWindow = vbe.ActiveWindow;
+                                        if (activeWindow != null)
+                                        {
+                                            // Send the macro name directly to the immediate pane
+                                            vbe.CommandBars.FindControl(Id: 2082).Execute(); // Opens immediate window
+                                            vbe.ActiveCodePane.CodeModule.InsertLines(
+                                                1,
+                                                $"Call {macroName}"
+                                            );
+                                            Console.WriteLine(
+                                                $"Successfully sent macro command: {macroName}"
+                                            );
+                                            return true;
+                                        }
+                                    }
+                                    catch (Exception exVbe)
+                                    {
+                                        Console.WriteLine(
+                                            $"VBA editor execution failed: {exVbe.Message}"
+                                        );
+                                    }
+                                }
+                            }
+                            catch (Exception exCmd)
+                            {
+                                Console.WriteLine($"Command execution failed: {exCmd.Message}");
+                            }
+
+                            // Method 3: As a last resort, try a direct Application.Run call with a fully qualified name
+                            try
+                            {
+                                // Attempt with VBIDE module
+                                if (_powerPointApp.VBIDE != null)
+                                {
+                                    Console.WriteLine("Attempting direct VBIDE access...");
+                                    return false; // This will be overridden if the above line doesn't throw
+                                }
+                            }
+                            catch
+                            {
+                                // Expected if security is tight
+                            }
+
+                            // If we get here, all methods failed
+                            Console.WriteLine("All macro execution methods failed");
+                            Console.WriteLine(
+                                "To enable macro execution, open PowerPoint and go to:"
+                            );
+                            Console.WriteLine(
+                                "File > Options > Trust Center > Trust Center Settings > Macro Settings"
+                            );
+                            Console.WriteLine(
+                                "Then check 'Trust access to the VBA project object model'"
+                            );
+
+                            return false;
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"Error running macro '{macroName}': {ex.Message}");
+                            return false;
+                        }
+                    },
+                    false
+                );
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error during macro execution: {ex.Message}");
+                return false;
+            }
+        }
+
+        // Directly try to run a slide-specific macro without attempting to enumerate first
+        public bool TryRunSlideSpecificMacro(int slideNumber)
+        {
+            try
+            {
+                // Create an array of common naming patterns for slide macros
+                string[] commonPatterns =
+                {
+                    $"Slide{slideNumber}_Action",
+                    $"Slide_{slideNumber}",
+                    $"Slide{slideNumber}Action",
+                    $"SlideAction{slideNumber}",
+                    $"Slide{slideNumber}",
+                    $"OnSlide{slideNumber}",
+                    $"OnEnterSlide{slideNumber}",
+                    $"RunSlide{slideNumber}",
+                    // Add generic slide change handlers
+                    "OnSlideChange",
+                    "SlideChanged",
+                    "SlideChange",
+                };
+
+                // Try each pattern directly without needing VBA project access
+                foreach (string pattern in commonPatterns)
+                {
+                    bool success = false;
+
+                    // Try with common module names
+                    string[] commonModules =
+                    {
+                        "Module1",
+                        "SlideModule",
+                        "Macros",
+                        "Presentation",
+                        "ThisPresentation",
+                    };
+
+                    foreach (string module in commonModules)
+                    {
+                        // Try with fully qualified name
+                        string fullName = $"{module}.{pattern}";
+                        Console.WriteLine($"Attempting to run macro: {fullName}");
+
+                        try
+                        {
+                            _powerPointApp.Run(fullName);
+                            Console.WriteLine($"Successfully ran macro: {fullName}");
+                            success = true;
+                            break;
+                        }
+                        catch
+                        {
+                            // Try next module
+                        }
+                    }
+
+                    // If we succeeded with any module, return
+                    if (success)
+                        return true;
+
+                    // Try without module qualification as a last resort
+                    try
+                    {
+                        _powerPointApp.Run(pattern);
+                        Console.WriteLine($"Successfully ran macro: {pattern}");
+                        return true;
+                    }
+                    catch
+                    {
+                        // Continue to next pattern
+                    }
+                }
+
+                return false;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error in TryRunSlideSpecificMacro: {ex.Message}");
+                return false;
+            }
+        }
+
+        // Run macro on current slide if available - improved to handle presentations not in slideshow mode
+        public bool RunMacroOnCurrentSlide()
+        {
+            try
+            {
+                // First check if we have a presentation open
+                if (_powerPointApp == null || _currentPresentation == null)
+                {
+                    Console.WriteLine("No presentation is open");
+                    return false;
+                }
+
+                // Get current slide number - first try slideshow mode
+                int currentSlideNumber = GetCurrentSlideNumber();
+
+                // If we couldn't get the slide number from slideshow view, try getting it from the presentation
+                if (currentSlideNumber <= 0)
+                {
+                    try
+                    {
+                        // Try to get the active slide from the normal view
+                        dynamic view = _currentPresentation.View;
+                        if (view != null)
+                        {
+                            // Try getting the selected slides
+                            try
+                            {
+                                dynamic slide = view.Slide;
+                                if (slide != null)
+                                {
+                                    currentSlideNumber = Convert.ToInt32(slide.SlideNumber);
+                                }
+                            }
+                            catch
+                            {
+                                // Even this failed, try other view types
+                            }
+                        }
+
+                        // If still no slide number, try a different method
+                        if (currentSlideNumber <= 0)
+                        {
+                            try
+                            {
+                                // Try to get the active window and current selection
+                                dynamic activeWindow = _powerPointApp.ActiveWindow;
+                                if (activeWindow != null)
+                                {
+                                    dynamic selection = activeWindow.Selection;
+                                    if (selection != null && selection.SlideRange != null)
+                                    {
+                                        currentSlideNumber = Convert.ToInt32(
+                                            selection.SlideRange.SlideNumber
+                                        );
+                                    }
+                                }
+                            }
+                            catch
+                            {
+                                // Even this approach failed
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Error detecting slide in normal view: {ex.Message}");
+                    }
+                }
+
+                // If we still don't have a slide number, default to the first slide
+                if (currentSlideNumber <= 0)
+                {
+                    Console.WriteLine("Could not determine current slide - using first slide");
+                    currentSlideNumber = 1; // Default to first slide
+                }
+
+                Console.WriteLine(
+                    $"Current slide: {currentSlideNumber}. Attempting to run slide-specific macros..."
+                );
+
+                // Try two approaches:
+
+                // Approach 1: Try to get available macros if VBA access is not restricted
+                try
+                {
+                    List<string> availableMacros = GetAvailableMacros();
+                    if (availableMacros.Count > 0)
+                    {
+                        // We have access to the macro list
+                        string slideNumberStr = currentSlideNumber.ToString();
+                        string slideMacroName = null;
+
+                        // Look for possible naming patterns for slide macros
+                        foreach (string macro in availableMacros)
+                        {
+                            // Check for common naming patterns
+                            if (
+                                macro.Contains($"Slide{slideNumberStr}_")
+                                || macro.Contains($"Slide_{slideNumberStr}")
+                                || macro.Contains($"Slide{slideNumberStr}Action")
+                                || macro.Contains($"SlideAction{slideNumberStr}")
+                                || macro.EndsWith($"Slide{slideNumberStr}")
+                            )
+                            {
+                                slideMacroName = macro;
+                                break;
+                            }
+                        }
+
+                        // If we found a match, run it
+                        if (!string.IsNullOrEmpty(slideMacroName))
+                        {
+                            bool success = RunMacro(slideMacroName);
+                            if (success)
+                                return true;
+                        }
+
+                        // If no slide-specific macro was found, look for a generic "OnSlideChange" macro
+                        foreach (string macro in availableMacros)
+                        {
+                            if (
+                                macro.Contains("OnSlideChange")
+                                || macro.Contains("SlideChanged")
+                                || macro.Contains("SlideChange")
+                            )
+                            {
+                                bool success = RunMacro(macro);
+                                if (success)
+                                    return true;
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"VBA project access approach failed: {ex.Message}");
+                    // Continue to approach 2
+                }
+
+                // Approach 2: Try direct execution without VBA project access
+                Console.WriteLine("Trying direct macro execution approach...");
+                return TryRunSlideSpecificMacro(currentSlideNumber);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error running macro on current slide: {ex.Message}");
+                return false;
+            }
+        }
+
+        // Check if presentation has macros without requiring VBA project access
+        public bool HasMacros()
+        {
+            try
+            {
+                if (_currentPresentation == null)
+                {
+                    Console.WriteLine("No presentation is open");
+                    return false;
+                }
+
+                // First try the HasVBProject property which is sometimes available even when VBA access is restricted
+                try
+                {
+                    bool hasMacros = _currentPresentation.HasVBProject;
+                    if (hasMacros)
+                    {
+                        Console.WriteLine("Presentation contains VBA macros");
+                        return true;
+                    }
+                    else
+                    {
+                        Console.WriteLine("Presentation does not contain VBA macros");
+                        return false;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"HasVBProject check failed: {ex.Message}");
+                }
+
+                // Check file extension - .pptm definitely has macros
+                if (!string.IsNullOrEmpty(_lastOpenedPath))
+                {
+                    string extension = Path.GetExtension(_lastOpenedPath).ToLower();
+                    if (extension == ".pptm")
+                    {
+                        Console.WriteLine(
+                            "Presentation has .pptm extension, which indicates it contains macros"
+                        );
+                        return true;
+                    }
+                }
+
+                // Check presentation type to see if it has macros
+                try
+                {
+                    // Try to check the presentation type
+                    int presentationType = Convert.ToInt32(_currentPresentation.HasVBProject);
+                    if (presentationType > 0)
+                    {
+                        return true;
+                    }
+                }
+                catch
+                {
+                    // Ignore - this is just an additional check
+                }
+
+                // We couldn't definitively determine if the presentation has macros
+                Console.WriteLine("Could not determine if presentation has macros");
+                return false;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error checking for macros: {ex.Message}");
+                return false;
+            }
+        }
+
+        // Get potential macro names based on the current slide
+        public List<string> GetPotentialMacroNames()
+        {
+            List<string> potentialMacros = new List<string>();
+
+            try
+            {
+                int currentSlide = GetCurrentSlideNumber();
+                if (currentSlide <= 0)
+                {
+                    return potentialMacros;
+                }
+
+                // Add commonly used module names
+                string[] commonModules =
+                {
+                    "Module1",
+                    "SlideModule",
+                    "Macros",
+                    "Presentation",
+                    "ThisPresentation",
+                };
+
+                // Add slide-specific macro patterns
+                string[] patterns =
+                {
+                    $"Slide{currentSlide}_Action",
+                    $"Slide_{currentSlide}",
+                    $"Slide{currentSlide}Action",
+                    $"SlideAction{currentSlide}",
+                    $"Slide{currentSlide}",
+                    $"OnSlide{currentSlide}",
+                    $"OnEnterSlide{currentSlide}",
+                    $"RunSlide{currentSlide}",
+                    // Add generic slide change handlers
+                    "OnSlideChange",
+                    "SlideChanged",
+                    "SlideChange",
+                };
+
+                // Generate all combinations
+                foreach (string module in commonModules)
+                {
+                    foreach (string pattern in patterns)
+                    {
+                        potentialMacros.Add($"{module}.{pattern}");
+                    }
+                }
+
+                // Also add non-qualified names as they sometimes work
+                foreach (string pattern in patterns)
+                {
+                    potentialMacros.Add(pattern);
+                }
+
+                return potentialMacros;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error generating potential macro names: {ex.Message}");
+                return potentialMacros;
+            }
+        }
+
+        // Start slideshow mode if not already in it
+        public bool StartSlideShow()
+        {
+            try
+            {
+                // Check if already in slideshow mode
+                if (_powerPointApp == null || _currentPresentation == null)
+                {
+                    Console.WriteLine("No presentation is open");
+                    return false;
+                }
+
+                // Check if already in slideshow mode
+                dynamic? slideShowWindows = _powerPointApp.SlideShowWindows;
+                if (slideShowWindows != null && Convert.ToInt32(slideShowWindows.Count) > 0)
+                {
+                    Console.WriteLine("Presentation is already in slideshow mode");
+                    return true;
+                }
+
+                // Start slideshow from the beginning or current slide
+                return RetryOperation(
+                    () =>
+                    {
+                        try
+                        {
+                            var settings = _currentPresentation.SlideShowSettings;
+                            if (settings == null)
+                            {
+                                Console.WriteLine("SlideShowSettings is not available");
+                                return false;
+                            }
+
+                            // Configure slideshow settings
+                            settings.ShowType = 1; // ppShowTypeSpeaker
+                            settings.StartingSlide = 1;
+                            settings.EndingSlide = GetTotalSlides();
+                            settings.ShowWithAnimation = true;
+
+                            // Run the slideshow
+                            settings.Run();
+                            Console.WriteLine("Started slideshow mode");
+                            return true;
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"Error starting slideshow: {ex.Message}");
+                            return false;
+                        }
+                    },
+                    false
+                );
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error in StartSlideShow: {ex.Message}");
+                return false;
+            }
+        }
     }
 }

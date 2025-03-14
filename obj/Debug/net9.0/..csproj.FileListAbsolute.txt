@@ -31,3 +31,4 @@ C:\Users\SVS_Intern\dev\projects\com-api\obj\Debug\net9.0\refint\..dll
 C:\Users\SVS_Intern\dev\projects\com-api\obj\Debug\net9.0\..pdb
 C:\Users\SVS_Intern\dev\projects\com-api\obj\Debug\net9.0\..genruntimeconfig.cache
 C:\Users\SVS_Intern\dev\projects\com-api\obj\Debug\net9.0\ref\..dll
+C:\Users\SVS_Intern\dev\projects\com-api\obj\Debug\net9.0\..sourcelink.json

@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  powerpoint-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: powerpoint-api:latest
+    container_name: powerpoint-api
+    ports:
+      - '8080:80'
+    volumes:
+      # Mount presentations folder into container
+      - ./presentations:/app/presentations
+    # Isolate process with process isolation (required for Windows containers)
+    isolation: process
+    restart: unless-stopped
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - DOTNET_EnableDiagnostics=0
+    # Make sure the container runs with enough resources for PowerPoint
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 2G

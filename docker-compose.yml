@@ -41,10 +41,6 @@ services:
         source: C:/Windows/System32/config
         target: C:/Windows/System32/config
         read_only: true
-    # Add necessary capabilities for DCOM
-    cap_add:
-      - SYS_ADMIN
-    # Add security options for DCOM
+    # Security options for DCOM
     security_opt:
       - seccomp:unconfined
-      - apparmor:unconfined

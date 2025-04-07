@@ -1,3 +1,6 @@
+using System.Net;
+using Microsoft.Extensions.Options;
+
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddEndpointsApiExplorer();
@@ -11,6 +14,18 @@ builder.Services.AddCors(options =>
         policy =>
         {
             policy.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader();
+        }
+    );
+});
+
+builder.WebHost.ConfigureKestrel(options =>
+{
+    options.Listen(
+        IPAddress.Any,
+        5001,
+        listenOptions =>
+        {
+            listenOptions.UseHttps("vm-api.crt", "vm-api.key");
         }
     );
 });

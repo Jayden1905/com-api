@@ -22,10 +22,10 @@ builder.WebHost.ConfigureKestrel(options =>
 {
     options.Listen(
         IPAddress.Any,
-        5001,
+        5206,
         listenOptions =>
         {
-            listenOptions.UseHttps("vm-api.crt", "vm-api.key");
+            listenOptions.UseHttps("devcert.pfx", "password");
         }
     );
 });

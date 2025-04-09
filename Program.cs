@@ -25,7 +25,7 @@ builder.WebHost.ConfigureKestrel(options =>
         5206,
         listenOptions =>
         {
-            listenOptions.UseHttps("devcert.pfx", "password");
+            listenOptions.UseHttps("vm-api.pfx", "password");
         }
     );
 });
